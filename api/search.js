@@ -1,6 +1,6 @@
 const PROFILES = {
   'صحنه': {
-    include: ['برنامه صحنه', 'صحنه فیلیمو', 'فیلیمو صحنه', 'حامد جوادزاده', 'فرزاد فرزین', 'صد داور', 'داوران صحنه', 'صحنه موسیقی'],
+    include: ['فیلیمو', 'حامد جوادزاده', 'فرزاد فرزین', 'صد داور', 'داوران صحنه', 'برنامه صحنه', 'صحنه موسیقی', 'صحنه فیلیمو'],
     exclude: ['تصادف', 'جرم', 'قتل', 'تئاتر', 'سینما', 'فیلم', 'هواشناسی', 'شهرستان صحنه', 'شهر صحنه', 'کرمانشاه', 'سحنه']
   }
 };
@@ -26,15 +26,18 @@ async function googleNews(query) {
 
 function score(item, q, profile) {
   const text = `${item.title} ${item.source}`.toLowerCase();
-  let value = 0;
-  if (text.includes(q.toLowerCase())) value += 35;
+  let value = text.includes(q.toLowerCase()) ? 25 : 0;
+  let matched = 0;
   for (const term of profile?.include || []) {
-    if (text.includes(term.toLowerCase())) value += term.length >= 10 ? 30 : 20;
+    if (text.includes(term.toLowerCase())) {
+      matched += 1;
+      value += term.length >= 10 ? 35 : 25;
+    }
   }
   for (const term of profile?.exclude || []) {
-    if (text.includes(term.toLowerCase())) value -= 60;
+    if (text.includes(term.toLowerCase())) value -= 70;
   }
-  return Math.max(0, Math.min(100, value));
+  return { relevance: Math.max(0, Math.min(100, value)), matched };
 }
 
 export default async function handler(req, res) {
@@ -44,14 +47,16 @@ export default async function handler(req, res) {
   const profile = PROFILES[q];
   const queries = profile
     ? [
-        '"برنامه صحنه"',
-        '"صحنه فیلیمو"',
-        '"صحنه" "حامد جوادزاده"',
-        '"صحنه" "فرزاد فرزین"',
-        '"صحنه" "صد داور"',
-        '"صحنه" "داوران" موسیقی'
+        'صحنه فیلیمو',
+        'صحنه حامد جوادزاده',
+        'صحنه فرزاد فرزین',
+        'صحنه صد داور',
+        'صحنه داوران موسیقی',
+        'برنامه صحنه موسیقی',
+        'حامد جوادزاده صحنه',
+        'فرزاد فرزین صحنه'
       ]
-    : [`"${q}"`, `${q}`];
+    : [`${q}`, `${q} خبر`, `${q} برنامه`];
 
   try {
     const batches = await Promise.all(queries.map(googleNews));
@@ -62,8 +67,11 @@ export default async function handler(req, res) {
     }
 
     const ranked = [...map.values()]
-      .map(item => ({ ...item, relevance: score(item, q, profile), query: q }))
-      .filter(item => profile ? item.relevance >= 35 : true)
+      .map(item => {
+        const s = score(item, q, profile);
+        return { ...item, relevance: s.relevance, query: q, matchedEntities: s.matched };
+      })
+      .filter(item => profile ? (item.matchedEntities > 0 && item.relevance >= 35) : true)
       .sort((a, b) => b.relevance - a.relevance)
       .slice(0, 50);
 
