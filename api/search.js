@@ -1,16 +1,55 @@
-import {resolveEntity,entitySearchTerms} from '../lib/entities.js';
-const clean=s=>String(s||'').replace(/<[^>]+>/g,' ').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/<!\[CDATA\[|\]\]>/g,'').replace(/\s+/g,' ').trim();
-const norm=s=>String(s||'').toLocaleLowerCase('fa-IR').replace(/[\u200c\u200d]/g,' ').replace(/[إأآ]/g,'ا').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/\s+/g,' ').trim();
-const domain=u=>{try{return new URL(u).hostname.replace(/^www\./,'').toLowerCase()}catch{return''}};
-const platform=u=>{const h=domain(u);if(h==='instagram.com'||h.endsWith('.instagram.com'))return'Instagram';if(['t.me','telegram.me'].includes(h)||h.endsWith('.telegram.me'))return'Telegram';if(h==='youtube.com'||h.endsWith('.youtube.com')||h==='youtu.be')return'YouTube';if(h==='x.com'||h.endsWith('.x.com')||h==='twitter.com'||h.endsWith('.twitter.com'))return'X';return'Web'};
-const parseRSS=xml=>[...String(xml||'').matchAll(/<item>([\s\S]*?)<\/item>/gi)].map(m=>{const x=m[1];const get=t=>clean(x.match(new RegExp(`<${t}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${t}>`,'i'))?.[1]||'');return{title:get('title'),link:get('link'),description:get('description'),published:get('pubDate')||get('published'),source:get('source')}}).filter(x=>x.title&&x.link);
-async function rss(url){try{const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 SocialIntelligence/1.0','Accept':'application/rss+xml,application/xml,text/xml'},signal:AbortSignal.timeout(8000)});if(!r.ok)return[];return parseRSS(await r.text())}catch{return[]}}
-async function google(q){return rss(`https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=fa&gl=IR&ceid=IR:fa`)}
-async function bing(q){return rss(`https://www.bing.com/news/search?q=${encodeURIComponent(q)}&format=rss&setlang=fa-ir`)}
-const positive=/عالی|موفق|رشد|برنده|مثبت|بهترین|جذاب|محبوب|پیشرفت|موفقیت|رضایت|رکورد/;
-const negative=/بد|بحران|شکست|انتقاد|حاشیه|منفی|کاهش|مشکل|اعتراض|اتهام|جنجال|نارضایتی|رسوایی/;
-const sentiment=t=>{const s=norm(t),p=(s.match(new RegExp(positive.source,'g'))||[]).length,n=(s.match(new RegExp(negative.source,'g'))||[]).length;return p>n?'مثبت':n>p?'منفی':'خنثی'};
-const topic=(t,q)=>{const stop=new Set(['برای','درباره','این','آن','است','شد','شود','کرد','که','با','از','به','در','و','را','یک','های','خبر','گزارش','می','شده','کرده']);const ws=norm(t).replace(/[^\p{L}\p{N}]/gu,' ').split(/\s+/).filter(x=>x.length>3&&!stop.has(x)&&x!==norm(q));return[...new Set(ws)].slice(0,3).join(' ')||q};
-function score(item,entity){const text=norm(`${item.title} ${item.description}`),title=norm(item.title),terms=entitySearchTerms(entity).map(norm).filter(Boolean),hits=terms.filter(t=>text.includes(t)),titleHits=terms.filter(t=>title.includes(t));return{score:titleHits.length?100:hits.length?75:0,hits}};
-async function collect(term,kind){const sites=kind==='Instagram'?['instagram.com']:kind==='Telegram'?['t.me','telegram.me']:kind==='YouTube'?['youtube.com','youtu.be']:kind==='X'?['x.com','twitter.com']:[];const queries=kind==='Web'?[`"${term}"`]:kind==='News'?[term]:sites.map(s=>`site:${s} "${term}"`);const rows=(await Promise.all(queries.map(q=>Promise.all([google(q),bing(q)]).then(x=>x.flat())))).flat();return rows.map(x=>({...x,platform:kind==='News'?'News':platform(x.link),searchTerm:term}));}
-export default async function handler(req,res){const q=String(req.query?.q||'').trim();if(!q)return res.status(400).json({error:'Missing q'});const started=Date.now();try{const entity=resolveEntity(q),terms=entitySearchTerms(entity),kinds=['Web','News','Instagram','Telegram','YouTube','X'],batches=await Promise.all(kinds.map(k=>Promise.all(terms.map(t=>collect(t,k))).then(x=>x.flat()))),raw=batches.flat(),map=new Map();for(const item of raw){if(!item.link||!item.title)continue;const key=item.link.split('#')[0].replace(/\/$/,'');if(!map.has(key))map.set(key,item)}const scored=[...map.values()].map(item=>{const s=score(item,entity);return{...item,relevance:s.score,isRelevant:s.score>=75,matchedEntities:s.hits,sentiment:sentiment(`${item.title} ${item.description}`),topic:topic(`${item.title} ${item.description}`,entity.name),usageType:item.platform==='News'||item.platform==='Web'?'News Coverage':'Social Mention'}}),items=scored.filter(x=>x.isRelevant).sort((a,b)=>b.relevance-a.relevance).slice(0,100),platforms={Instagram:0,Telegram:0,X:0,Web:0,YouTube:0,News:0};items.forEach(x=>platforms[x.platform]=(platforms[x.platform]||0)+1);return res.status(200).json({ok:true,query:q,entity,searchTerms:terms,count:items.length,rawCount:raw.length,items,platforms,diagnostics:{elapsedMs:Date.now()-started,providers:kinds.map((k,i)=>({name:k,raw:batches[i].length,matched:batches[i].filter(x=>score(x,entity).score>=75).length}))}})}catch(e){return res.status(200).json({ok:false,query:q,count:0,rawCount:0,items:[],error:e?.message||'Provider failure',diagnostics:{elapsedMs:Date.now()-started}})}}
+import { resolveEntity, entitySearchTerms } from '../lib/entities.js';
+
+const clean = (s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/<!\[CDATA\[|\]\]>/g, '').replace(/\s+/g, ' ').trim();
+const norm = (s) => String(s || '').toLocaleLowerCase('fa-IR').replace(/[\u200c\u200d]/g, ' ').replace(/[إأآ]/g, 'ا').replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/\s+/g, ' ').trim();
+const domain = (u) => { try { return new URL(u).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } };
+const platform = (u) => { const h = domain(u); if (h === 'instagram.com' || h.endsWith('.instagram.com')) return 'Instagram'; if (['t.me', 'telegram.me'].includes(h) || h.endsWith('.telegram.me')) return 'Telegram'; if (h === 'youtube.com' || h.endsWith('.youtube.com') || h === 'youtu.be') return 'YouTube'; if (h === 'x.com' || h.endsWith('.x.com') || h === 'twitter.com' || h.endsWith('.twitter.com')) return 'X'; return 'Web'; };
+const parseRSS = (xml) => [...String(xml || '').matchAll(/<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi)].map(m => { const x = m[1]; const get = (t) => clean(x.match(new RegExp(`<${t}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${t}>`, 'i'))?.[1] || ''); return { title: get('title'), link: get('link'), description: get('description'), published: get('pubDate') || get('published'), source: get('source') }; }).filter(x => x.title && x.link);
+
+async function rss(url) {
+  try {
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 SocialIntelligence/1.0', Accept: 'application/rss+xml,application/xml,text/xml,*/*' }, signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return [];
+    return parseRSS(await r.text());
+  } catch { return []; }
+}
+const google = (q) => rss(`https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=fa&gl=IR&ceid=IR:fa`);
+const bing = (q) => rss(`https://www.bing.com/news/search?q=${encodeURIComponent(q)}&format=rss&setlang=fa-ir`);
+const positive = /عالی|موفق|رشد|برنده|مثبت|بهترین|جذاب|محبوب|پیشرفت|موفقیت|رضایت|رکورد/;
+const negative = /بد|بحران|شکست|انتقاد|حاشیه|منفی|کاهش|مشکل|اعتراض|اتهام|جنجال|نارضایتی|رسوایی/;
+const sentiment = (t) => { const s = norm(t), p = (s.match(new RegExp(positive.source, 'g')) || []).length, n = (s.match(new RegExp(negative.source, 'g')) || []).length; return p > n ? 'مثبت' : n > p ? 'منفی' : 'خنثی'; };
+const topic = (t, q) => { const stop = new Set(['برای','درباره','این','آن','است','شد','شود','کرد','که','با','از','به','در','و','را','یک','های','خبر','گزارش','می','شده','کرده']); const ws = norm(t).replace(/[^\p{L}\p{N}]/gu, ' ').split(/\s+/).filter(x => x.length > 3 && !stop.has(x) && x !== norm(q)); return [...new Set(ws)].slice(0, 3).join(' ') || q; };
+
+function score(item, entity) {
+  const title = norm(item.title), text = norm(`${item.title} ${item.description}`), terms = entitySearchTerms(entity).map(norm).filter(Boolean);
+  const titleHits = terms.filter(t => title.includes(t));
+  const textHits = terms.filter(t => text.includes(t));
+  return { score: titleHits.length ? 100 : textHits.length ? 75 : 0, hits: [...new Set([...titleHits, ...textHits])] };
+}
+
+async function discover(term) {
+  const queries = [term, `"${term}"`];
+  const results = (await Promise.all(queries.map(q => Promise.all([google(q), bing(q)])))).flat(2);
+  return results.map(x => ({ ...x, platform: platform(x.link), searchTerm: term }));
+}
+
+export default async function handler(req, res) {
+  const q = String(req.query?.q || '').trim();
+  if (!q) return res.status(400).json({ ok: false, error: 'Missing q' });
+  const started = Date.now();
+  try {
+    const entity = resolveEntity(q);
+    const terms = entitySearchTerms(entity).filter(Boolean).slice(0, 6);
+    const batches = await Promise.all(terms.map(discover));
+    const raw = batches.flat();
+    const map = new Map();
+    for (const item of raw) { if (!item.link || !item.title) continue; const key = item.link.split('#')[0].replace(/\/$/, ''); if (!map.has(key)) map.set(key, item); }
+    const scored = [...map.values()].map(item => { const s = score(item, entity); return { ...item, relevance: s.score, isRelevant: s.score >= 75, matchedEntities: s.hits, sentiment: sentiment(`${item.title} ${item.description}`), topic: topic(`${item.title} ${item.description}`, entity.name), usageType: ['News','Web'].includes(item.platform) ? 'News Coverage' : 'Social Mention' }; });
+    const items = scored.filter(x => x.isRelevant).sort((a,b) => b.relevance - a.relevance).slice(0, 100);
+    const platforms = { Instagram: 0, Telegram: 0, X: 0, Web: 0, YouTube: 0, News: 0 };
+    items.forEach(x => platforms[x.platform] = (platforms[x.platform] || 0) + 1);
+    return res.status(200).json({ ok: true, query: q, entity, searchTerms: terms, count: items.length, rawCount: raw.length, items, platforms, diagnostics: { elapsedMs: Date.now() - started, providers: terms.map((t, i) => ({ name: t, raw: batches[i].length, matched: batches[i].filter(x => score(x, entity).score >= 75).length })) } });
+  } catch (e) {
+    return res.status(200).json({ ok: false, query: q, count: 0, rawCount: 0, items: [], error: e?.message || 'Provider failure', diagnostics: { elapsedMs: Date.now() - started } });
+  }
+}
