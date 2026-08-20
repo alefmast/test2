@@ -1,45 +1,7 @@
 const clean=s=>(s||'').replace(/<[^>]+>/g,' ').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\s+/g,' ').replace(/<!\[CDATA\[|\]\]>/g,'').trim();
-
-async function googleNews(query){
- const url=`https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=fa&gl=IR&ceid=IR:fa`;
- const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0'}}); if(!r.ok)return[];
- const xml=await r.text();
- return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m=>{const x=m[1],get=t=>clean(x.match(new RegExp(`<${t}>([\\s\\s]*?)<\\/${t}>`))?.[1]||'');return{title:get('title'),link:get('link'),published:get('pubDate'),source:get('source'),platform:'Web / News'};});
-}
-async function googleWeb(query){
- const url=`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=fa&num=20`;
- const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0','Accept-Language':'fa-IR,fa;q=0.9'}}); if(!r.ok)return[];
- const html=await r.text(); const out=[];
- for(const m of html.matchAll(/<a href="(https?:\/\/[^\"]+)"[^>]*>([\s\S]*?)<\/a>/g)){
-   const link=m[1],title=clean(m[2]);
-   if(!title||link.includes('google.com/search')||link.includes('accounts.google'))continue;
-   let source='Web'; try{source=new URL(link).hostname.replace(/^www\./,'')}catch{}
-   out.push({title,link,source,platform:/t\.me|telegram/i.test(link)?'Telegram':'Web'});
- }
- return out;
-}
-
-const sentiment=(text)=>{const t=text.toLowerCase();if(/عالی|موفق|رشد|برنده|مثبت|بهترین|جذاب|محبوب/.test(t))return'مثبت';if(/بد|بحران|شکست|انتقاد|حاشیه|منفی|کاهش|مشکل|اعتراض/.test(t))return'منفی';return'خنثی'};
+async function googleNews(query){const url=`https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=fa&gl=IR&ceid=IR:fa`;const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0'}});if(!r.ok)return[];const xml=await r.text();return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m=>{const x=m[1],get=t=>clean(x.match(new RegExp(`<${t}>([\\s\\S]*?)<\\/${t}>`))?.[1]||'');return{title:get('title'),link:get('link'),published:get('pubDate'),source:get('source'),platform:'Web / News'};});}
+async function googleWeb(query){const url=`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=fa&num=20`;const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0','Accept-Language':'fa-IR,fa;q=0.9'}});if(!r.ok)return[];const html=await r.text();const out=[];for(const m of html.matchAll(/<a href="(https?:\/\/[^\"]+)"[^>]*>([\s\S]*?)<\/a>/g)){const link=m[1],title=clean(m[2]);if(!title||link.includes('google.com/search')||link.includes('accounts.google'))continue;let source='Web';try{source=new URL(link).hostname.replace(/^www\./,'')}catch{}out.push({title,link,source,platform:/t\.me|telegram/i.test(link)?'Telegram':'Web'});}return out;}
+const sentiment=text=>{const t=text.toLowerCase();if(/عالی|موفق|رشد|برنده|مثبت|بهترین|جذاب|محبوب/.test(t))return'مثبت';if(/بد|بحران|شکست|انتقاد|حاشیه|منفی|کاهش|مشکل|اعتراض/.test(t))return'منفی';return'خنثی'};
 const topic=(text,q)=>{const words=text.replace(/[^\p{L}\p{N}\s#_-]/gu,' ').split(/\s+/).filter(Boolean);const stop=new Set(['برای','درباره','این','آن','است','شد','شود','کرد','که','با','از','به','در','و','را','یک','های','خبر','گزارش']);const candidates=words.filter(w=>w.length>3&&!stop.has(w)&&w!==q);return candidates.slice(0,3).join(' ')||q};
-
-function classify(item,q){
- const text=`${item.title||''} ${item.source||''} ${item.link||''}`.toLowerCase();
- const query=q.toLowerCase();
- const exact=text.includes(query);
- const titleExact=(item.title||'').toLowerCase().includes(query);
- let score=exact?55:0; if(titleExact)score+=25; if(item.platform==='Telegram')score+=5;
- return {relevance:Math.min(100,score),isRelevant:exact,matchedEntities:exact?[q]:[],excludedTerms:[],sentiment:sentiment(item.title||''),topic:topic(item.title||'',q)};
-}
-
-export default async function handler(req,res){
- const q=String(req.query?.q||'').trim(); if(!q)return res.status(400).json({error:'Missing q'});
- const queries=[q,`"${q}" خبر`,`"${q}" برنامه`,`"${q}" رسانه`];
- try{
-  const [newsBatches,webBatches]=await Promise.all([Promise.all(queries.map(googleNews)),Promise.all(queries.map(googleWeb))]);
-  const map=new Map();
-  for(const item of [...newsBatches.flat(),...webBatches.flat()]){const key=item.link||`${item.title}|${item.source}`;if(item.title&&!map.has(key))map.set(key,item);}
-  const classified=[...map.values()].map(item=>({...item,...classify(item,q),query:q}));
-  const relevant=classified.filter(x=>x.isRelevant).sort((a,b)=>b.relevance-a.relevance).slice(0,50);
-  return res.status(200).json({query:q,count:relevant.length,items:relevant,rawCount:classified.length,sources:{news:newsBatches.flat().length,web:webBatches.flat().length}});
- }catch(e){return res.status(502).json({error:e.message||'Search provider unavailable'});}
-}
+function classify(item,q){const title=(item.title||'').toLowerCase(),source=(item.source||'').toLowerCase(),query=q.toLowerCase();const titleExact=title.includes(query);const sourceExact=source===query||source.includes(query);const exact=titleExact||sourceExact;let score=exact?60:0;if(titleExact)score+=30;if(item.platform==='Telegram')score+=5;return{relevance:Math.min(100,score),isRelevant:exact,matchedEntities:exact?[q]:[],excludedTerms:[],sentiment:sentiment(item.title||''),topic:topic(item.title||'',q)};}
+export default async function handler(req,res){const q=String(req.query?.q||'').trim();if(!q)return res.status(400).json({error:'Missing q'});const queries=[q,`"${q}" خبر`,`"${q}" برنامه`,`"${q}" رسانه`];try{const [newsBatches,webBatches]=await Promise.all([Promise.all(queries.map(googleNews)),Promise.all(queries.map(googleWeb))]);const map=new Map();for(const item of [...newsBatches.flat(),...webBatches.flat()]){const key=item.link||`${item.title}|${item.source}`;if(item.title&&!map.has(key))map.set(key,item);}const classified=[...map.values()].map(item=>({...item,...classify(item,q),query:q}));const relevant=classified.filter(x=>x.isRelevant).sort((a,b)=>b.relevance-a.relevance).slice(0,50);return res.status(200).json({query:q,count:relevant.length,items:relevant,rawCount:classified.length,sources:{news:newsBatches.flat().length,web:webBatches.flat().length}});}catch(e){return res.status(502).json({error:e.message||'Search provider unavailable'});}}
