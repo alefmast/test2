@@ -1,0 +1,1 @@
+export default async function handler(req,res){if(req.method!=='POST')return res.status(405).json({error:'POST required'});return res.status(200).json({status:'queued',message:'Content trace pipeline is ready for connector/fingerprint providers.',items:[]});}
