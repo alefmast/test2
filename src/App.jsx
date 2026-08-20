@@ -1,20 +1,114 @@
-import {useState} from 'react';
-import {Activity,Bell,Download,Hash,LayoutDashboard,MessageCircle,Plus,Search,Settings,TrendingUp,Users,X} from 'lucide-react';
-const seed=[{platform:'Demo',author:'نمونه',text:'برای شروع یک کلیدواژه جستجو کنید.',sentiment:'خنثی',topic:'Demo',engagement:0}];
-const nav=[['overview','نمای کلی',LayoutDashboard],['feed','فید منشن‌ها',MessageCircle],['topics','موضوعات',Hash],['accounts','اکانت‌ها',Users],['alerts','هشدارها',Bell]];
-function Stat({icon:Icon,label,value}){return <div className="stat"><span><Icon size={18}/></span><small>{label}</small><strong>{value}</strong></div>}
-function Mentions({items}){return <div className="mentions">{items.map((m,i)=><article key={i}><div className="mention-meta"><span>{m.platform}</span><time>{m.published?new Date(m.published).toLocaleDateString('fa-IR'):'اکنون'}</time>{m.sentiment&&<i className={m.sentiment}>{m.sentiment}</i>}</div><strong>{m.author||m.source||'منبع وب'}</strong><p>{m.title||m.text}</p><footer><b>#{m.topic||m.query}</b><span>{m.engagement?m.engagement.toLocaleString('fa-IR')+' تعامل':'منبع واقعی وب'}</span>{m.link&&<a href={m.link} target="_blank" rel="noreferrer">مشاهده منبع</a>}</footer></article>)}</div>}
-export default function App(){
- const [page,setPage]=useState('overview'),[keyword,setKeyword]=useState(''),[query,setQuery]=useState(''),[items,setItems]=useState(seed),[loading,setLoading]=useState(false),[error,setError]=useState(''),[modal,setModal]=useState(false),[toast,setToast]=useState('');
- const notify=t=>{setToast(t);setTimeout(()=>setToast(''),2500)};
- async function runSearch(term=query||keyword){const q=term.trim();if(!q)return;setLoading(true);setError('');setPage('feed');try{const r=await fetch('/api/search?q='+encodeURIComponent(q));const d=await r.json();if(!r.ok)throw Error(d.error||'خطا');setItems(d.items.map(x=>({...x,topic:q})));setKeyword(q);notify(`${d.count} نتیجه برای «${q}» پیدا شد.`)}catch(e){setError('جستجوی زنده انجام نشد. دوباره تلاش کنید.');setItems([])}finally{setLoading(false)}}
- const exportCsv=()=>{const rows=['Platform,Source,Title,Published,Link',...items.map(m=>[m.platform,m.source||m.author,m.title||m.text,m.published,m.link].map(v=>`"${String(v||'').replaceAll('"','""')}"`).join(','))];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv'}));a.download=`social-listening-${keyword||'search'}.csv`;a.click()};
- return <div className="app" dir="rtl"><aside className="sidebar"><div className="brand"><div className="brand-mark">S</div><div><b>Social Listening</b><small>OS / MVP</small></div></div><button className="new-monitor" onClick={()=>setModal(true)}><Plus size={17}/> مانیتور جدید</button><nav>{nav.map(([id,label,Icon])=><button key={id} className={page===id?'active':''} onClick={()=>setPage(id)}><Icon size={18}/>{label}</button>)}</nav><div className="sidebar-foot"><Settings size={16}/> تنظیمات اتصال</div></aside>
- <main className="main"><header className="topbar"><div><small>SOCIAL LISTENING OS</small><h1>{nav.find(x=>x[0]===page)?.[1]}</h1></div><div className="monitor-pill"><Hash size={15}/>{keyword||'بدون مانیتور'}</div></header>
- {page==='overview'&&<><section className="hero"><div><span className="live"><i/> LIVE WEB SEARCH</span><h2>نبض گفتگو درباره «{keyword||'کلیدواژه خودت'}»</h2><p>کلیدواژه را وارد کن؛ سیستم نتایج واقعی وب و News را جمع‌آوری می‌کند.</p></div><button onClick={()=>setModal(true)}><Plus size={16}/> افزودن کلیدواژه</button></section><section className="search-box"><Search size={19}/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==='Enter'&&runSearch()} placeholder="مثلاً صحنه، حامد جوادزاده، صداتو..."/><button onClick={()=>runSearch()} disabled={loading}>{loading?'در حال جستجو...':'جستجوی واقعی'}</button></section><section className="stats"><Stat icon={MessageCircle} label="نتایج فعلی" value={items.length}/><Stat icon={Activity} label="منبع وب" value={items.filter(x=>x.platform==='Web / News').length}/><Stat icon={TrendingUp} label="کلیدواژه فعال" value={keyword?'۱':'۰'}/><Stat icon={Bell} label="هشدار" value="۰"/></section><section className="panel"><div className="head"><div><h3>آخرین نتایج</h3><small>{keyword?'داده واقعی جستجوی وب':'هنوز جستجویی انجام نشده'}</small></div><button className="link" onClick={()=>setPage('feed')}>مشاهده فید</button></div>{error&&<div className="error">{error}</div>}<Mentions items={items.slice(0,8)}/></section></>}
- {page==='feed'&&<section className="panel"><div className="head"><div><h3>فید نتایج واقعی</h3><small>{items.length} نتیجه {keyword&&`برای «${keyword}»`}</small></div><button className="export" onClick={exportCsv}><Download size={15}/> CSV</button></div><div className="filters"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==='Enter'&&runSearch()} placeholder="کلیدواژه جدید..."/>{query&&<X size={15} onClick={()=>setQuery('')}/></div><button onClick={()=>runSearch()} disabled={loading}>{loading?'جستجو...':'جستجو'}</button></div>{error&&<div className="error">{error}</div>}<Mentions items={items}/></section>}
- {page==='topics'&&<section className="panel"><div className="head"><div><h3>موضوعات</h3><small>برای تحلیل موضوعی، ابتدا جستجو کنید.</small></div></div><div className="empty"><Hash size={30}/><h3>{keyword||'کلیدواژه‌ای انتخاب نشده'}</h3><p>نسخه فعلی نتایج واقعی وب را برای کلیدواژه فعال نشان می‌دهد.</p></div></section>}
- {page==='accounts'&&<section className="panel"><div className="head"><div><h3>منابع</h3><small>رسانه‌ها و منابعی که در نتایج ظاهر شده‌اند.</small></div></div><Mentions items={items}/></section>}
- {page==='alerts'&&<section className="panel"><div className="empty"><Bell size={30}/><h3>هشدار هوشمند</h3><p>زیرساخت Rule آماده است؛ مرحله بعدی آستانه‌های حجم و sentiment را به داده واقعی وصل می‌کنیم.</p><button onClick={()=>notify('Rule هشدار در نسخه بعدی فعال می‌شود.')}>ساخت Rule</button></div></section>}
- </main>{modal&&<div className="modal-backdrop" onClick={()=>setModal(false)}><div className="modal" onClick={e=>e.stopPropagation()}><h3>مانیتور جدید</h3><p>کلیدواژه یا نام برند</p><input autoFocus value={keyword} onChange={e=>setKeyword(e.target.value)} onKeyDown={e=>e.key==='Enter'&&runSearch(keyword)}/><button onClick={()=>{setModal(false);runSearch(keyword)}}>جستجو و ساخت مانیتور</button></div></div>}{toast&&<div className="toast">{toast}</div>}</div>
+import { useState } from 'react';
+import { Search, Plus, Download, MessageCircle, Activity, Hash, Bell } from 'lucide-react';
+
+const nav = [
+  ['overview', 'نمای کلی'],
+  ['feed', 'فید منشن‌ها'],
+  ['topics', 'موضوعات'],
+  ['accounts', 'منابع'],
+  ['alerts', 'هشدارها'],
+];
+
+function Mentions({ items }) {
+  if (!items.length) return <div className="empty">هنوز نتیجه‌ای وجود ندارد.</div>;
+  return (
+    <div className="mentions">
+      {items.map((m, i) => (
+        <article key={i}>
+          <div className="mention-meta">
+            <span>{m.platform || 'Web / News'}</span>
+            <time>{m.published ? new Date(m.published).toLocaleDateString('fa-IR') : ''}</time>
+          </div>
+          <strong>{m.source || 'منبع وب'}</strong>
+          <p>{m.title || m.text || 'بدون عنوان'}</p>
+          <footer>
+            <b>#{m.query || 'search'}</b>
+            {m.link && <a href={m.link} target="_blank" rel="noreferrer">مشاهده منبع</a>}
+          </footer>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+export default function App() {
+  const [page, setPage] = useState('overview');
+  const [query, setQuery] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function search(term = query) {
+    const q = term.trim();
+    if (!q) return;
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Search failed');
+      setItems(data.items || []);
+      setKeyword(q);
+      setPage('feed');
+    } catch (e) {
+      setItems([]);
+      setError(`جستجو انجام نشد: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function exportCsv() {
+    const rows = [
+      ['Platform', 'Source', 'Title', 'Published', 'Link'],
+      ...items.map(x => [x.platform, x.source, x.title, x.published, x.link]),
+    ];
+    const csv = rows.map(row => row.map(v => `"${String(v || '').replaceAll('"', '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' }));
+    a.download = `social-listening-${keyword || 'search'}.csv`;
+    a.click();
+  }
+
+  const title = nav.find(x => x[0] === page)?.[1] || 'نمای کلی';
+
+  return (
+    <div className="app" dir="rtl">
+      <aside className="sidebar">
+        <div className="brand"><div className="brand-mark">S</div><div><b>Social Listening</b><small>OS / MVP</small></div></div>
+        <button className="new-monitor" onClick={() => setPage('overview')}><Plus size={17} /> مانیتور جدید</button>
+        <nav>{nav.map(([id, label]) => <button key={id} className={page === id ? 'active' : ''} onClick={() => setPage(id)}>{label}</button>)}</nav>
+      </aside>
+
+      <main className="main">
+        <header className="topbar">
+          <div><small>SOCIAL LISTENING OS</small><h1>{title}</h1></div>
+          <div className="monitor-pill">{keyword || 'بدون مانیتور'}</div>
+        </header>
+
+        <section className="hero">
+          <div><span className="live"><i /> LIVE WEB SEARCH</span><h2>نبض گفتگو درباره «{keyword || 'کلیدواژه خودت'}»</h2><p>یک کلیدواژه وارد کن تا نتایج واقعی وب و News جمع‌آوری شود.</p></div>
+        </section>
+
+        <section className="search-box">
+          <Search size={19} />
+          <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()} placeholder="مثلاً صحنه، حامد جوادزاده، صداتو..." />
+          <button onClick={() => search()} disabled={loading}>{loading ? 'در حال جستجو...' : 'جستجوی واقعی'}</button>
+        </section>
+
+        {error && <div className="error">{error}</div>}
+
+        <section className="stats">
+          <div className="stat"><MessageCircle size={18} /><small>نتایج</small><strong>{items.length}</strong></div>
+          <div className="stat"><Activity size={18} /><small>منبع وب</small><strong>{items.length}</strong></div>
+          <div className="stat"><Hash size={18} /><small>کلیدواژه</small><strong>{keyword ? 1 : 0}</strong></div>
+          <div className="stat"><Bell size={18} /><small>هشدار</small><strong>0</strong></div>
+        </section>
+
+        {page === 'feed' && <section className="panel"><div className="head"><div><h3>فید نتایج</h3><small>{items.length} نتیجه برای «{keyword}»</small></div><button onClick={exportCsv}><Download size={15} /> CSV</button></div><Mentions items={items} /></section>}
+        {page !== 'feed' && <section className="panel"><div className="head"><div><h3>آخرین نتایج</h3><small>{keyword ? `نتایج جستجوی «${keyword}»` : 'هنوز جستجویی انجام نشده'}</small></div></div><Mentions items={items.slice(0, 10)} /></section>}
+      </main>
+    </div>
+  );
 }
