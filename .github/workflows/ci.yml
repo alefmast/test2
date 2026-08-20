@@ -17,9 +17,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install dependencies
         run: npm install
+
+      - name: Check API syntax
+        run: node --check api/search.js && node --check api/trace.js && node --check api/health.js
 
       - name: Build
         run: npm run build
