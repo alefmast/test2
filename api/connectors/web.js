@@ -1,0 +1,2 @@
+import {searchConnector} from './search.js';
+export default async function handler(req,res){const q=String(req.query?.q||'').trim();if(!q)return res.status(400).json({error:'Missing q',items:[]});const items=await searchConnector('Web',q);res.status(200).json({platform:'Web',query:q,count:items.length,items,mode:'public-index'});}
