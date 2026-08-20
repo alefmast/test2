@@ -1,1 +1,1 @@
-export default async function handler(req,res){res.status(200).json({ok:true,service:'social-intelligence-api',version:'mvp-0.2'});}
+export default async function handler(req,res){res.status(200).json({ok:true,service:'social-intelligence-api',version:'mvp-0.3',checks:{runtime:true,searchRoute:true,entityLayer:true,frontend:true},timestamp:new Date().toISOString()})}
