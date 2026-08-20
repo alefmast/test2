@@ -1,2 +1,2 @@
-import {connectorConfig} from './search.js';
-export default function handler(req,res){res.status(200).json({ok:true,connectors:connectorConfig,note:'Public-index mode. Direct private/API data requires provider credentials and authorization.'});}
+import { connectorStatus } from './index.js';
+export default function handler(req,res){res.status(200).json({ok:true,connectors:connectorStatus()});}
