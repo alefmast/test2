@@ -1,0 +1,1 @@
+export default async function handler(req,res){res.status(200).json({ok:true,service:'social-intelligence-api',version:'mvp-0.2'});}
