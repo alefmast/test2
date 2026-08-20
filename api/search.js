@@ -1,7 +1,7 @@
 const PROFILES = {
   'صحنه': {
-    include: ['فیلیمو', 'حامد جوادزاده', 'فرزاد فرزین', 'صد داور', 'برنامه صحنه', 'صحنه فیلیمو'],
-    exclude: ['تصادف', 'جرم', 'قتل', 'تئاتر', 'سینما', 'فیلم', 'هواشناسی', 'شهرستان صحنه', 'کرمانشاه']
+    include: ['برنامه صحنه', 'صحنه فیلیمو', 'فیلیمو صحنه', 'حامد جوادزاده', 'فرزاد فرزین', 'صد داور', 'داوران صحنه', 'صحنه موسیقی'],
+    exclude: ['تصادف', 'جرم', 'قتل', 'تئاتر', 'سینما', 'فیلم', 'هواشناسی', 'شهرستان صحنه', 'شهر صحنه', 'کرمانشاه', 'سحنه']
   }
 };
 
@@ -26,9 +26,14 @@ async function googleNews(query) {
 
 function score(item, q, profile) {
   const text = `${item.title} ${item.source}`.toLowerCase();
-  let value = text.includes(q.toLowerCase()) ? 40 : 0;
-  for (const term of profile?.include || []) if (text.includes(term.toLowerCase())) value += 20;
-  for (const term of profile?.exclude || []) if (text.includes(term.toLowerCase())) value -= 50;
+  let value = 0;
+  if (text.includes(q.toLowerCase())) value += 35;
+  for (const term of profile?.include || []) {
+    if (text.includes(term.toLowerCase())) value += term.length >= 10 ? 30 : 20;
+  }
+  for (const term of profile?.exclude || []) {
+    if (text.includes(term.toLowerCase())) value -= 60;
+  }
   return Math.max(0, Math.min(100, value));
 }
 
@@ -38,35 +43,32 @@ export default async function handler(req, res) {
 
   const profile = PROFILES[q];
   const queries = profile
-    ? [`${q} فیلیمو`, `${q} "حامد جوادزاده"`, `${q} "فرزاد فرزین"`, `${q} "صد داور"`]
-    : [q];
+    ? [
+        '"برنامه صحنه"',
+        '"صحنه فیلیمو"',
+        '"صحنه" "حامد جوادزاده"',
+        '"صحنه" "فرزاد فرزین"',
+        '"صحنه" "صد داور"',
+        '"صحنه" "داوران" موسیقی'
+      ]
+    : [`"${q}"`, `${q}`];
 
   try {
-    const results = [];
-    for (const query of queries) {
-      const batch = await googleNews(query);
-      results.push(...batch);
-    }
-
+    const batches = await Promise.all(queries.map(googleNews));
     const map = new Map();
-    for (const item of results) {
+    for (const item of batches.flat()) {
       const key = item.link || `${item.title}|${item.source}`;
       if (item.title && !map.has(key)) map.set(key, item);
     }
 
-    let items = [...map.values()]
+    const ranked = [...map.values()]
       .map(item => ({ ...item, relevance: score(item, q, profile), query: q }))
-      .filter(item => profile ? item.relevance >= 40 : true)
+      .filter(item => profile ? item.relevance >= 35 : true)
       .sort((a, b) => b.relevance - a.relevance)
       .slice(0, 50);
 
-    // Never leave the user with an empty feed because a strict relevance rule failed.
-    if (!items.length && results.length) {
-      items = [...map.values()].slice(0, 20).map(item => ({ ...item, relevance: 0, query: q }));
-    }
-
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
-    return res.status(200).json({ query: q, count: items.length, items });
+    return res.status(200).json({ query: q, count: ranked.length, items: ranked });
   } catch (error) {
     return res.status(502).json({ error: error.message || 'Search provider unavailable' });
   }
